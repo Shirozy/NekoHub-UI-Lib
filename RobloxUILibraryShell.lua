@@ -11,7 +11,7 @@ UILibrary.__index = UILibrary
 
 local DEFAULT_THEME_IMAGE = "rbxassetid://108367677259387"
 
-local DEFAULT_OPTIONS = {
+local DEFAULT_OPTIONS = { 
 	ScreenGuiName = "NekoHub by Vixiie & Kyee!",
 	WindowTitle = "NekoHub <3",
 	VersionText = "v1.4.12",
@@ -90,13 +90,13 @@ local function create(className, props, children)
 end
 
 local function getOrCreateBlur()
-	local blur = Lighting:FindFirstChild("Blur")
+	local blur = Lighting:FindFirstChild("UILibraryBlur")
 	if blur and blur:IsA("BlurEffect") then
 		return blur
 	end
 
 	blur = Instance.new("BlurEffect")
-	blur.Name = "Blur"
+	blur.Name = "UILibraryBlur"
 	blur.Size = 0
 	blur.Parent = Lighting
 	return blur
@@ -2578,24 +2578,28 @@ function UILibrary:CreatePage(config)
 			for index, item in ipairs(items) do
 				local option = create("TextButton", {
 					Name = tostring(item),
-					Size = UDim2.new(1, 0, 0, 24),
+					Size = UDim2.new(1, 0, 0, 28),
 					LayoutOrder = index,
 					Text = "",
 					AutoButtonColor = false,
 					BorderSizePixel = 0,
 					ZIndex = 51,
 					Parent = popup,
+					BackgroundTransparency = 1,
 					Attributes = { ThemeRole = "Surface2" },
 				})
+
 				table.insert(optionButtons, option)
-				create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = option })
-				local textLabel = create("TextLabel", {
+
+				create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = option })
+
+				local label = create("TextLabel", {
 					Name = "Text",
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
 					AnchorPoint = Vector2.new(0, 0.5),
-					Position = UDim2.new(0, 8, 0.5, 0),
-					Size = UDim2.new(1, -16, 0.7, 0),
+					Position = UDim2.new(0, 10, 0.5, 0),
+					Size = UDim2.new(1, -40, 0.7, 0),
 					Text = tostring(item),
 					TextSize = 13,
 					TextXAlignment = Enum.TextXAlignment.Left,
@@ -2604,29 +2608,75 @@ function UILibrary:CreatePage(config)
 					Attributes = { ThemeRole = "Text" },
 				})
 
-				local function renderOption()
-					textLabel.Text = (selectedMap[item] and "✓ " or "") .. tostring(item)
-				end
-				renderOption()
+				local check = create("TextLabel", {
+					Name = "Check",
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(1, 0.5),
+					Position = UDim2.new(1, -10, 0.5, 0),
+					Size = UDim2.new(0, 16, 0, 16),
+					Text = "✓",
+					TextTransparency = selectedMap[item] and 0 or 1,
+					TextSize = 14,
+					ZIndex = 52,
+					Parent = option,
+					Attributes = { ThemeRole = "Accent" },
+				})
 
+				local function animateSelect(on)
+					TweenService:Create(option, TweenInfo.new(0.15), {
+						BackgroundTransparency = on and 0.08 or 0.15,
+					}):Play()
+
+					TweenService:Create(check, TweenInfo.new(0.15), {
+						TextTransparency = on and 0 or 1,
+					}):Play()
+
+					TweenService:Create(option, TweenInfo.new(0.12, Enum.EasingStyle.Back), {
+						Size = UDim2.new(1, 0, 0, on and 30 or 28),
+					}):Play()
+				end
+
+				-- hover
 				option.MouseEnter:Connect(function()
-					TweenService:Create(option, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					TweenService:Create(option, TweenInfo.new(0.1), {
 						BackgroundTransparency = 0.08,
 					}):Play()
 				end)
 
 				option.MouseLeave:Connect(function()
-					TweenService:Create(option, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-						BackgroundTransparency = 0,
-					}):Play()
+					if not selectedMap[item] then
+						TweenService:Create(option, TweenInfo.new(0.1), {
+							BackgroundTransparency = 0.15,
+						}):Play()
+					end
 				end)
 
+				-- click animation
 				option.MouseButton1Click:Connect(function()
 					selectedMap[item] = not selectedMap[item]
-					renderOption()
+
+					animateSelect(selectedMap[item])
 					refreshText()
+
+					-- click pulse
+					local pulse = TweenService:Create(option, TweenInfo.new(0.1), {
+						Size = UDim2.new(1, 0, 0, 32),
+					})
+					pulse:Play()
+					pulse.Completed:Connect(function()
+						TweenService:Create(option, TweenInfo.new(0.1), {
+							Size = UDim2.new(1, 0, 0, 28),
+						}):Play()
+					end)
+
 					safeCallback(childConfig.Callback, currentValues())
 				end)
+
+				-- initial state
+				if selectedMap[item] then
+					animateSelect(true)
+				end
 			end
 
 			backdrop.MouseButton1Click:Connect(function()
@@ -2912,28 +2962,45 @@ function UILibrary:CreatePage(config)
 
 		function sectionObj:AddPlayerSelector(childConfig)
 			childConfig = childConfig or {}
-			local values = {}
-			for _, plr in ipairs(Players:GetPlayers()) do
-				table.insert(values, plr.Name)
+
+			local dropdown
+			local function getPlayers()
+				local list = {}
+				for _, plr in ipairs(Players:GetPlayers()) do
+					table.insert(list, plr.Name)
+				end
+				return list
 			end
-			local dropdown = self:AddDropdown({
+
+			dropdown = self:AddDropdown({
 				Name = childConfig.Name or "Player",
-				Items = values,
-				Default = childConfig.Default or values[1] or "None",
+				Items = getPlayers(),
+				Default = childConfig.Default,
 				Callback = function(value)
 					local plr = Players:FindFirstChild(value)
 					safeCallback(childConfig.Callback, plr, value)
 				end,
 			})
 
-			local function refresh()
-				values = {}
-				for _, plr in ipairs(Players:GetPlayers()) do
-					table.insert(values, plr.Name)
+			local function rebuild()
+				if dropdown and dropdown.Destroy then
+					local parent = dropdown.Frame.Parent
+					dropdown:Destroy()
+
+					dropdown = self:AddDropdown({
+						Name = childConfig.Name or "Player",
+						Items = getPlayers(),
+						Default = childConfig.Default,
+						Callback = function(value)
+							local plr = Players:FindFirstChild(value)
+							safeCallback(childConfig.Callback, plr, value)
+						end,
+					})
 				end
 			end
-			table.insert(self.Library.Connections, Players.PlayerAdded:Connect(refresh))
-			table.insert(self.Library.Connections, Players.PlayerRemoving:Connect(refresh))
+
+			table.insert(self.Library.Connections, Players.PlayerAdded:Connect(rebuild))
+			table.insert(self.Library.Connections, Players.PlayerRemoving:Connect(rebuild))
 
 			return dropdown
 		end
@@ -3110,7 +3177,7 @@ function UILibrary:SetTheme(themeName, instant)
 			ImageTransparency = 1,
 		})
 		fadeOut:Play()
-		fadeOut.Completed:Connect(function()
+		fadeOut.Completed:Once(function()
 			applyThemeImage(bg, theme, 1)
 			TweenService:Create(bg, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
 				ImageTransparency = self.Options.BackgroundImageTransparency,
@@ -3241,7 +3308,7 @@ function UILibrary:Close(skipAnimation)
 	})
 	closeTween:Play()
 
-	local blur = Lighting:FindFirstChild("Blur")
+	local blur = Lighting:FindFirstChild("UILibraryBlur")
 	if blur then
 		local blurTween = TweenService:Create(blur, tweenInfo, { Size = 0 })
 		blurTween:Play()
@@ -3307,7 +3374,7 @@ function UILibrary:_bindSignals()
 		self.Refs.PlayerCount.Text = tostring(#Players:GetPlayers())
 	end))
 	table.insert(self.Connections, Players.PlayerRemoving:Connect(function()
-		self.Refs.PlayerCount.Text = tostring(math.max(0, #Players:GetPlayers() - 1))
+		self.Refs.PlayerCount.Text = tostring(#Players:GetPlayers())
 	end))
 end
 
