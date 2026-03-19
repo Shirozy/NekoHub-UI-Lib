@@ -813,7 +813,7 @@ function UILibrary:_build()
 		Position = UDim2.new(0.27, 0, 0.28, 0),
 		Size = UDim2.new(0.22, 0, 0.44, 0),
 		FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
-		Text = tostring(game.JobId or "Studio"),
+		Text = tostring(game.PlaceId or "Studio"),
 		TextScaled = true,
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
