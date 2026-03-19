@@ -72,6 +72,41 @@ local function safeCallback(callback, ...)
 	end
 end
 
+local function createRipple(parent, x, y)
+	if not parent or not parent:IsA("GuiObject") then
+		return
+	end
+
+	local ripple = Instance.new("Frame")
+	ripple.Name = "Ripple"
+	ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+	ripple.Position = UDim2.fromOffset(x - parent.AbsolutePosition.X, y - parent.AbsolutePosition.Y)
+	ripple.Size = UDim2.fromOffset(0, 0)
+	ripple.BackgroundTransparency = 0.35
+	ripple.BorderSizePixel = 0
+	ripple.ZIndex = parent.ZIndex + 1
+	ripple.ClipsDescendants = true
+	ripple.Parent = parent
+	ripple.BackgroundColor3 = Color3.new(1, 1, 1)
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = ripple
+
+	local maxSize = math.max(parent.AbsoluteSize.X, parent.AbsoluteSize.Y) * 1.8
+
+	local tween = TweenService:Create(ripple, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = UDim2.fromOffset(maxSize, maxSize),
+		BackgroundTransparency = 1,
+	})
+	tween:Play()
+	tween.Completed:Connect(function()
+		if ripple.Parent then
+			ripple:Destroy()
+		end
+	end)
+end
+
 local function create(className, props, children)
 	local inst = Instance.new(className)
 	for prop, value in pairs(props or {}) do
@@ -187,6 +222,21 @@ local function rgbToColor3(r, g, b)
 	)
 end
 
+local function bindHoverScale(guiObject, normalSize, hoverSize)
+	if not guiObject then return end
+
+	guiObject.MouseEnter:Connect(function()
+		TweenService:Create(guiObject, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = hoverSize,
+		}):Play()
+	end)
+
+	guiObject.MouseLeave:Connect(function()
+		TweenService:Create(guiObject, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = normalSize,
+		}):Play()
+	end)
+end
 
 local ThemeManager = {}
 
@@ -966,7 +1016,7 @@ function UILibrary:_build()
 		Name = "Notifications",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.new(0.3, 0, 1, 0),
+		Size = UDim2.new(0.16, 0, 1, 0),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Parent = screenGui,
@@ -1570,6 +1620,7 @@ function UILibrary:CreatePage(config)
 		section.Parent = self.Scroll
 
 		section.Header.Text = sectionConfig.Name or "Section"
+		section.Header.Active = true
 		section.Description.Text = sectionConfig.Description or ""
 		section.Description.Visible = section.Description.Text ~= ""
 
@@ -1581,6 +1632,44 @@ function UILibrary:CreatePage(config)
 			Page = self,
 			Library = self.Library,
 		}
+		
+		sectionObj.Collapsed = false
+
+		function sectionObj:SetCollapsed(collapsed, instant)
+			self.Collapsed = collapsed == true
+
+			if self.Collapsed then
+				if instant then
+					self.Content.Visible = false
+					if self.Description then
+						self.Description.Visible = false
+					end
+				else
+					TweenService:Create(self.Content, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						BackgroundTransparency = 1,
+					}):Play()
+					task.delay(0.18, function()
+						if self.Content then
+							self.Content.Visible = false
+						end
+						if self.Description then
+							self.Description.Visible = false
+						end
+					end)
+				end
+			else
+				self.Content.Visible = true
+				if self.Description and self.Description.Text ~= "" then
+					self.Description.Visible = true
+				end
+			end
+		end
+		
+		section.Header.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				sectionObj:SetCollapsed(not sectionObj.Collapsed)
+			end
+		end)
 
 		function sectionObj:AddFrame(childConfig)
 			childConfig = childConfig or {}
@@ -1607,6 +1696,76 @@ function UILibrary:CreatePage(config)
 				})
 			end
 			return frame
+		end
+		
+		function sectionObj:AddSearchBox(config)
+			config = config or {}
+
+			local input = self:AddTextbox({
+				Name = config.Name or "Search",
+				Placeholder = config.Placeholder or "Search...",
+			})
+
+			input.Input:GetPropertyChangedSignal("Text"):Connect(function()
+				local query = string.lower(input.Input.Text)
+
+				for _, child in ipairs(self.Content:GetChildren()) do
+					if child:IsA("Frame") then
+						local name = string.lower(child.Name or "")
+						child.Visible = query == "" or string.find(name, query)
+					end
+				end
+			end)
+
+			return input
+		end
+		
+		function sectionObj:AddSearchBox(childConfig)
+			childConfig = childConfig or {}
+
+			local searchObj = self:AddTextbox({
+				Name = childConfig.Name or "Search",
+				Placeholder = childConfig.Placeholder or "Search...",
+				Default = childConfig.Default or "",
+			})
+
+			local searchFrame = searchObj.Frame
+			searchFrame:SetAttribute("IsSearchBox", true)
+
+			local function getSearchText(guiObject)
+				local parts = {}
+
+				table.insert(parts, string.lower(guiObject.Name or ""))
+
+				for _, desc in ipairs(guiObject:GetDescendants()) do
+					if desc:IsA("TextLabel") or desc:IsA("TextButton") or desc:IsA("TextBox") then
+						table.insert(parts, string.lower(desc.Text or ""))
+					end
+				end
+
+				return table.concat(parts, " ")
+			end
+
+			local function applySearch()
+				local query = string.lower(searchObj.Input.Text or "")
+
+				for _, child in ipairs(self.Content:GetChildren()) do
+					if child:IsA("GuiObject") then
+						if child == searchFrame then
+							child.Visible = true
+						else
+							local haystack = getSearchText(child)
+							local matches = query == "" or string.find(haystack, query, 1, true) ~= nil
+							child.Visible = matches
+						end
+					end
+				end
+			end
+
+			searchObj.Input:GetPropertyChangedSignal("Text"):Connect(applySearch)
+			applySearch()
+
+			return searchObj
 		end
 
 		function sectionObj:AddLabel(childConfig)
@@ -1728,6 +1887,10 @@ function UILibrary:CreatePage(config)
 				Parent = button,
 				Attributes = { ThemeRole = "Text" },
 			})
+			
+			if childConfig.Tooltip then
+				self.Library:BindTooltip(button, childConfig.Tooltip)
+			end
 
 			local baseButtonTransparency = initialButtonTransparency
 			local hoverButtonTransparency = math.clamp(baseButtonTransparency - 0.12, 0, 1)
@@ -1745,6 +1908,9 @@ function UILibrary:CreatePage(config)
 			end)
 
 			button.MouseButton1Click:Connect(function()
+				local mousePos = UserInputService:GetMouseLocation()
+				button.ClipsDescendants = true
+				createRipple(button, mousePos.X, mousePos.Y)
 				safeCallback(childConfig.Callback)
 			end)
 
@@ -1968,6 +2134,88 @@ function UILibrary:CreatePage(config)
 					safeCallback(childConfig.Callback, value)
 				end
 			end
+			
+			function sectionObj:AddProgressBar(childConfig)
+				childConfig = childConfig or {}
+				local value = math.clamp(childConfig.Value or 0, 0, 1)
+
+				local frame = self:AddFrame({
+					Name = childConfig.Id or childConfig.Name or "ProgressBar",
+					Height = childConfig.Height or 42,
+				})
+
+				local label = create("TextLabel", {
+					Name = "Label",
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(0, 0.5),
+					TextSize = 15,
+					Position = UDim2.new(0.04, 0, 0.25, 0),
+					Size = UDim2.new(0.92, 0, 0, 14),
+					Text = childConfig.Name or "Progress",
+					FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Parent = frame,
+					Attributes = { ThemeRole = "Text" },
+				})
+
+				local track = create("Frame", {
+					Name = "Track",
+					AnchorPoint = Vector2.new(0.5, 1),
+					Position = UDim2.new(0.5, 0, 0.86, 0),
+					Size = UDim2.new(0.92, 0, 0, 10),
+					BorderSizePixel = 0,
+					Parent = frame,
+					Attributes = { ThemeRole = "Surface3" },
+				})
+				create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
+
+				local fill = create("Frame", {
+					Name = "Fill",
+					Size = UDim2.new(value, 0, 1, 0),
+					BorderSizePixel = 0,
+					Parent = track,
+					Attributes = { ThemeRole = "Accent" },
+				})
+				create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = fill })
+
+				local valueText = create("TextLabel", {
+					Name = "ValueText",
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(1, 0.5),
+					Position = UDim2.new(0.96, 0, 0.28, 0),
+					Size = UDim2.new(0, 50, 0, 14),
+					Text = string.format("%d%%", math.floor(value * 100)),
+					FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+					TextSize = 15,
+					TextXAlignment = Enum.TextXAlignment.Right,
+					Parent = frame,
+					Attributes = { ThemeRole = "TextMuted" },
+				})
+
+				local progressObj = {
+					Frame = frame,
+					Track = track,
+					Fill = fill,
+					Label = label,
+					ValueText = valueText,
+				}
+
+				function progressObj:SetValue(newValue)
+					value = math.clamp(newValue or 0, 0, 1)
+					valueText.Text = string.format("%d%%", math.floor(value * 100))
+					TweenService:Create(fill, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						Size = UDim2.new(value, 0, 1, 0),
+					}):Play()
+				end
+
+				function progressObj:GetValue()
+					return value
+				end
+
+				return progressObj
+			end
 
 			local function setFromInput(xPos, skipCallback)
 				local absolutePos = track.AbsolutePosition.X
@@ -2072,6 +2320,19 @@ function UILibrary:CreatePage(config)
 			local function fire(submitted)
 				safeCallback(childConfig.Callback, input.Text, submitted)
 			end
+			
+			input.Focused:Connect(function()
+				TweenService:Create(bg, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundTransparency = 0.5,
+				}):Play()
+			end)
+
+			input.FocusLost:Connect(function(enterPressed)
+				TweenService:Create(bg, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundTransparency = 0,
+				}):Play()
+				fire(enterPressed)
+			end)
 
 			input.FocusLost:Connect(function(enterPressed)
 				fire(enterPressed)
@@ -2189,6 +2450,37 @@ function UILibrary:CreatePage(config)
 				PaddingRight = UDim.new(0, 6),
 				Parent = popup,
 			})
+			local searchBg = create("Frame", {
+				Name = "SearchBackground",
+				Size = UDim2.new(1, 0, 0, 24),
+				BorderSizePixel = 0,
+				ZIndex = 51,
+				Parent = popup,
+				Attributes = { ThemeRole = "Surface2" },
+			})
+			create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = searchBg })
+			create("UIStroke", {
+				Transparency = 0.55,
+				Parent = searchBg,
+				Attributes = { ThemeRole = "Stroke" },
+			})
+
+			local searchBox = create("TextBox", {
+				Name = "SearchBox",
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+				Size = UDim2.new(0.92, 0, 0.8, 0),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				Text = "",
+				PlaceholderText = "Search...",
+				ClearTextOnFocus = false,
+				TextSize = 13,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = 52,
+				Parent = searchBg,
+				Attributes = { ThemeRole = "Text", ThemeProp = "TextColor3" },
+			})
 			local popupLayout = create("UIListLayout", {
 				Padding = UDim.new(0, 4),
 				SortOrder = Enum.SortOrder.LayoutOrder,
@@ -2196,7 +2488,8 @@ function UILibrary:CreatePage(config)
 			})
 
 			local optionButtons = {}
-
+			local optionMap = {}
+			
 			local dropdownObj = {}
 
 			local function cleanupWatcher()
@@ -3420,6 +3713,75 @@ function UILibrary:SetKeybindOverlayEnabled(enabled, skipAnimation)
 	end
 end
 
+function UILibrary:CreateTooltip(text)
+	local tooltip = create("TextLabel", {
+		Name = "Tooltip",
+		Visible = false,
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
+		Text = tostring(text or ""),
+		TextSize = 13,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		ZIndex = 200,
+		Parent = self.Refs.Tooltips,
+		Attributes = { ThemeRole = "Surface2" },
+	})
+	create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = tooltip })
+	create("UIStroke", {
+		Transparency = 0.45,
+		Parent = tooltip,
+		Attributes = { ThemeRole = "Stroke" },
+	})
+	create("UIPadding", {
+		PaddingTop = UDim.new(0, 6),
+		PaddingBottom = UDim.new(0, 6),
+		PaddingLeft = UDim.new(0, 8),
+		PaddingRight = UDim.new(0, 8),
+		Parent = tooltip,
+	})
+
+	tooltip:SetAttribute("ThemeRole", "Text")
+	tooltip:SetAttribute("ThemeProp", "TextColor3")
+
+	return tooltip
+end
+
+function UILibrary:BindTooltip(guiObject, text)
+	if not guiObject or not text or text == "" then
+		return nil
+	end
+
+	local tooltip = self:CreateTooltip(text)
+
+	local moveConn
+	local enterConn
+	local leaveConn
+
+	enterConn = guiObject.MouseEnter:Connect(function()
+		tooltip.Visible = true
+	end)
+
+	leaveConn = guiObject.MouseLeave:Connect(function()
+		tooltip.Visible = false
+	end)
+
+	moveConn = UserInputService.InputChanged:Connect(function(input)
+		if tooltip.Visible and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local mousePos = UserInputService:GetMouseLocation()
+			tooltip.Position = UDim2.fromOffset(mousePos.X + 14, mousePos.Y + 14)
+		end
+	end)
+
+	table.insert(self.Connections, enterConn)
+	table.insert(self.Connections, leaveConn)
+	table.insert(self.Connections, moveConn)
+
+	return tooltip
+end
+
 function UILibrary:Notify(config)
 	if type(config) == "string" then
 		config = { Title = config }
@@ -3627,6 +3989,7 @@ function UILibrary:AddKeybind(config)
 	config = config or {}
 	assert(config.Name, "AddKeybind requires Name")
 	assert(config.Section, "AddKeybind requires Section")
+	config.Mode = config.Mode or "Press"
 
 	local frame = config.Section:AddFrame({
 		Name = config.Name,
@@ -3721,12 +4084,37 @@ function UILibrary:AddKeybind(config)
 		end)
 	end)
 
-	table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input, gp)
-		if gp or listening then return end
-		if input.KeyCode == currentKey then
-			safeCallback(config.Callback, currentKey)
-		end
-	end))
+	if config.Mode == "Hold" then
+		table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input, gp)
+			if gp or listening then return end
+			if input.KeyCode == currentKey then
+				safeCallback(config.Callback, true, currentKey)
+			end
+		end))
+
+		table.insert(self.Connections, UserInputService.InputEnded:Connect(function(input, gp)
+			if gp or listening then return end
+			if input.KeyCode == currentKey then
+				safeCallback(config.Callback, false, currentKey)
+			end
+		end))
+	elseif config.Mode == "Toggle" then
+		local toggled = false
+		table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input, gp)
+			if gp or listening then return end
+			if input.KeyCode == currentKey then
+				toggled = not toggled
+				safeCallback(config.Callback, toggled, currentKey)
+			end
+		end))
+	else
+		table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input, gp)
+			if gp or listening then return end
+			if input.KeyCode == currentKey then
+				safeCallback(config.Callback, currentKey)
+			end
+		end))
+	end
 
 	table.insert(self.KeybindObjects, keybindObj)
 	self:_refreshKeybindOverlay()
