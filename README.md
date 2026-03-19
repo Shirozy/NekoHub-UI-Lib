@@ -4,6 +4,14 @@ A modern, themeable Roblox UI library focused on flexibility, clean visuals, and
 
 ---
 
+## Badges
+
+![Status](https://img.shields.io/badge/status-active-success)
+![Roblox](https://img.shields.io/badge/platform-Roblox-red)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
+---
+
 ## Features
 
 * Fully themeable UI system with gradients and role-based styling
@@ -11,9 +19,11 @@ A modern, themeable Roblox UI library focused on flexibility, clean visuals, and
 * Smooth animations and transitions
 * Dependency system for reactive UI logic
 * Built-in settings page and theme switcher
-* Wide range of controls (toggles, sliders, dropdowns, etc.)
 * Keybind system with overlay support
 * Notification system
+* Search and filtering support
+* Tooltips for contextual help
+* Progress bars for visual feedback
 
 ---
 
@@ -28,8 +38,6 @@ local ui = UILibrary.new({
 	DefaultTheme = "Gruvbox",
 })
 ```
-
-<img width="1713" height="987" alt="image" src="https://github.com/user-attachments/assets/27860b1e-df20-48fe-b927-ae35894b2625" />
 
 ---
 
@@ -186,6 +194,93 @@ section:AddPlayerSelector({
 
 ---
 
+## Additional Controls
+
+### Search Bar
+
+The search bar allows you to dynamically filter controls within a section.
+
+```lua
+local search = section:AddSearchBox({
+	Name = "Search",
+	Placeholder = "Search controls..."
+})
+```
+
+**Behavior**
+
+* Filters controls in real time
+* Matches based on control names
+* Automatically excludes itself
+
+---
+
+### Progress Bar
+
+The progress bar is a visual indicator for values between `0` and `1`.
+
+```lua
+local progress = section:AddProgressBar({
+	Name = "Loading",
+	Value = 0.25
+})
+```
+
+**Update value**
+
+```lua
+progress:SetValue(0.75)
+```
+
+**Example with slider**
+
+```lua
+local progress = section:AddProgressBar({
+	Name = "Power Level",
+	Value = 0.5
+})
+
+section:AddSlider({
+	Name = "Adjust Power",
+	Min = 0,
+	Max = 100,
+	Default = 50,
+	Callback = function(value)
+		progress:SetValue(value / 100)
+	end
+})
+```
+
+**Notes**
+
+* Range is `0 → 1`
+* Automatically animates
+* Displays percentage
+
+---
+
+### Tooltips
+
+Tooltips provide additional context when hovering over controls.
+
+```lua
+section:AddButton({
+	Name = "Delete",
+	Tooltip = "This action cannot be undone",
+	Callback = function()
+		print("Deleted")
+	end
+})
+```
+
+**Behavior**
+
+* Appears on hover
+* Follows the cursor
+* Uses current theme styling
+
+---
+
 ## Keybinds
 
 ### Basic Keybind
@@ -203,6 +298,28 @@ ui:AddKeybind({
 
 ---
 
+### Keybind Modes
+
+```lua
+ui:AddKeybind({
+	Name = "Sprint",
+	Section = section,
+	Default = Enum.KeyCode.LeftShift,
+	Mode = "Hold",
+	Callback = function(isHolding)
+		print("Holding:", isHolding)
+	end
+})
+```
+
+Modes:
+
+* `Press`
+* `Toggle`
+* `Hold`
+
+---
+
 ### Toggle UI Keybind
 
 ```lua
@@ -216,8 +333,6 @@ ui:AddToggleKeybind({
 ---
 
 ## Dependency System
-
-You can dynamically show or hide controls based on other control values.
 
 ```lua
 local advancedToggle = demo:AddToggle({
@@ -241,8 +356,6 @@ ui:BindDependency(advancedToggle, powerSlider, function(state)
 end)
 ```
 
-This will only show the slider when the toggle is enabled.
-
 ---
 
 ## Notifications
@@ -259,10 +372,6 @@ ui:Notify({
 
 ## Themes
 
-Themes are defined externally and passed into the library.
-
-### Switching Theme
-
 ```lua
 ui:SetTheme("TokyoNight")
 ```
@@ -271,23 +380,15 @@ ui:SetTheme("TokyoNight")
 
 ## Settings Page
 
-The library automatically creates a settings page.
-
-### Open Settings
-
 ```lua
 ui:GoToSettings()
 ```
-
-### Add Custom Settings Section
 
 ```lua
 local section = ui:AddSettingsSection({
 	Name = "Custom Settings"
 })
 ```
-
-### Add Controls to Settings
 
 ```lua
 ui:AddToSettings("Toggle", {
@@ -304,8 +405,6 @@ ui:AddToSettings("Toggle", {
 
 ## UI Control
 
-### Open / Close
-
 ```lua
 ui:Open()
 ui:Close()
@@ -314,7 +413,7 @@ ui:Toggle()
 
 ---
 
-### Prompt
+## Prompt
 
 ```lua
 ui:SetPromptText("Press RightShift to open UI")
@@ -323,7 +422,7 @@ ui:ShowPrompt(true)
 
 ---
 
-### Keybind Overlay
+## Keybind Overlay
 
 ```lua
 ui:SetKeybindOverlayEnabled(true)
